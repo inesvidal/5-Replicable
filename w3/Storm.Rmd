@@ -1,0 +1,363 @@
+---
+title: "NOAA Events analysis"
+output: html_document
+---
+## Introduction
+In this document we will explore the NOAA Storm database and try to create insights
+that can help prevent and reduce the impact of this kind of events.
+We will be using the [NOAA database](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) obtained on `r date()`
+We'll fist 
+```{r initialisation, echo = FALSE}
+library(dplyr)
+library(xtable)
+library(ggplot2)
+```
+
+## Data processing
+
+Let's load and prepare data: 
+
+```{r data-load, cache = TRUE}
+#### load data
+# variable initialisation
+zipfile = "./repdata-data-StormData.csv.bz2"
+
+# set working directory
+setwd("/Users/inesv/Coursera/5-Replicable/w3")
+
+# load data, if not done yet
+if(!(exists("NOAA"))){
+    NOAA <- read.csv(zipfile)
+    }
+
+```
+We create a new dataframe 'damages' containing only the data referred to personal and material damage and event type.
+```{r data-preparation, cache = TRUE}
+#### Prepare data 
+# Goal understand: which events have highest consequences for humans and for the economy. 
+# interesting fields are FATALITIES, INJURIES, PROPDMG, CROPDMG, PROPDMGEXP, CROPDMGEXP
+# PROPDMGEXP, CROPDMGEXP need to be interpreted
+# From the manual: Estimates should be rounded to three significant digits, 
+# followed by an alphabetical character signifying the magnitude of the
+# number, i.e., 1.55B for $1,550,000,000. Alphabetical characters used to signify magnitude
+# include ???K??? for thousands, ???M??? for millions, and ???B??? for billions. 
+
+## Create two new variables to indicate damage in dollars.
+# Organise data
+damages <- NOAA %>%
+    select(EVTYPE, PROPDMG, CROPDMG, PROPDMGEXP, CROPDMGEXP, FATALITIES, INJURIES)
+
+# Keep only events with economic or personal damage
+#damages <- filter(events, !(events$PROPDMG == 0 & events$CROPDMG == 0) | 
+#  !(events$FATALITIES == 0 & events$INJURIES))
+
+# Set to uppercase
+damages$PROPDMGEXP <- toupper(damages$PROPDMGEXP)
+damages$CROPDMGEXP <- toupper(damages$CROPDMGEXP)
+damages$EVTYPE <- toupper(damages$EVTYPE)
+# remove double spaces + spaces at the beginning or at the end
+damages$EVTYPE <- gsub("^ +| +$|( ) +", "\\1", damages$EVTYPE, perl=TRUE)
+
+```
+
+We create a dictionary to associate the different event types to the conventions described in the [NOAA manual] (https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+```{r dictionary, cache=TRUE, echo = TRUE}
+
+names <- c("key", "terms")
+dic <- vector("character", length(names))
+names(dic) <- names
+
+dic$terms <- c(
+    #Winter Storm Z
+    "WIND(.+)SNOW|SNOW(.+)WIND|SNOW(.*)SLEET|FREEZ(.+)RAIN(.+)SNOW|SLEET(.+)ICE|FREEZ|RAIN(.+)SLEET(.+)SNOW|ICE(.+)SNOW|BLOW(.+)SNOW|SNOW(.+)BLOW|BLIZZ(.+)SNOW|ICE(.+)WIND|SNOW(.+)BLIZ|SNOW(.+)SQUALLS|HEAVY SNOW(.+)HIGH WINDS, SNOW/RAIN/SLEET",
+    #Thunderstorm Wind C
+    "^THUNDERSTORM WIND|^TSTM WIND",
+    #High Wind Z
+    "^HIGH(.+)WIND",
+    #Astronomical Low Tide Z
+    "BLOW-OUT|ASTRONOMICAL LOW TIDE",
+    #Avalanche Z
+    "AVALANC|DRIFTING SNOW",
+    #Blizzard Z
+    "BLIZZARD",
+    #Coastal Flood Z
+    "BEACH|COASTAL FLOOD|HIGH TIDE",
+    #Cold/Wind Chill Z
+    "COLD WIND CHILL",
+    #Debris Flow C
+    "DEBRIS",
+    #Dense Fog Z
+    "^FOG|DENSE FOG|ICE FOG",
+    #Dense Smoke Z
+    "SMOKE",
+    #Drought Z
+    "DRY|DROUGHT",
+    #Dust Devil C
+    "DEVIL",
+    #Dust Storm Z
+    "DUST",
+    #Excessive Heat Z
+    "HEAT",
+    #Extreme Cold/Wind Chill Z
+    "EXTREME(.+)COLD|WIND(.+)CHILL",
+    #Flash Flood C
+    "FLASH | FLOOD",
+    #Flood C
+    "FLOOD",
+    #Frost/Freeze Z
+    "FROST|FREEZE",
+    #Funnel Cloud C
+    "FUNNEL",
+    #Freezing Fog Z
+    "FREEZING FOG",
+    #Hail C
+    "HAIL",
+    #Heat Z
+    "HEAT",
+    #Heavy Rain C
+    "HEAVY(.+)RAIN",
+    #Heavy Snow Z
+    "HEAVY(.+)SNOW",
+    #High Surf Z
+    "HIGH SURF",
+    #Hurricane (Typhoon) Z
+    "HURRICANE|TYPHOON",
+    #Ice Storm Z
+    "ICESTORM",
+    #Lake-Effect Snow Z
+    "LAKE SNOW|EFFECT SNOW",
+    #Lakeshore Flood Z
+    "LAKE FLOOD|LAKESHORE FLOOD",
+    #Lightning C
+    "LIGHTNING",
+    #Marine Hail M
+    "MARINE HAIL",
+    #Marine High Wind M: we include here 2 "MARINE MISHAP" reported with 40mph+ winds, and one "MARINE ACCIDENT" (Fatalities resulting from drowning due to an overturned, damaged, or destroyed marine vessel)
+    "MARINE HIGH WIND|MARINE MISHAP|MARINE ACCIDENT",
+    #Marine Strong Wind M
+    "MARINE STRONG WIND",
+    #Marine Thunderstorm Wind M
+    "MARINE TSTM WIND|MARINE THUNDERSTORM WIND",
+    #Rip Current Z
+    "RIP CURRENT",
+    #Seiche Z
+    "SEICHE",
+    #Sleet Z
+    "SLEET",
+    #Storm Surge/Tide Z
+    "SURGE",
+    #Strong Wind Z
+    "^STRONG WIND",
+    #Tornado C
+    "TORNADO",
+    #Tropical Depression Z
+    "TROPICAL DEPRESSION",
+    #Tropical Storm Z
+    "TROPICAL STORM",
+    #Tsunami Z
+    "TSUNAMI",
+    #Volcanic Ash Z
+    "VOLCAN",
+    #Waterspout M
+    "WATERSPROUT",
+    #Wildfire Z
+    "WILDFIRE",
+    #Winter Weather Z
+    "SNOW(.+)COLD")
+dic$key <- c(
+    #Winter Storm Z
+    "WINTER STORM",
+    #Thunderstorm Wind C
+    "THUNDERSTORM WIND",
+    #High Wind Z
+    "HIGH WIND",
+    #Astronomical Low Tide Z
+    "ASTRONOMICAL LOW TIDE",
+    #Avalanche Z
+    "AVALANCHE",
+    #Blizzard Z
+    "BLIZZARD",
+    #Coastal Flood Z
+    "COASTAL FLOOD",
+    #Cold/Wind Chill Z
+    "COLD/WIND CHILL",
+    #Debris Flow C
+    "DEBRIS FLOW",
+    #Dense Fog Z
+    "DENSE FOG",
+    #Dense Smoke Z
+    "DENSE SMOKE",
+    #Drought Z
+    "DROUGHT",
+    #Dust Devil C
+    "DUST DEVIL",
+    #Dust Storm Z
+    "DUST STORM",
+    #Excessive Heat Z
+    "EXCESSIVE HEAT",
+    #Extreme Cold/Wind Chill Z
+    "EXTREME COLD/WIND CHILL",
+    #Flash Flood C
+    "FLASH FLOOD",
+    #Flood C
+    "FLOOD",
+    #Frost/Freeze Z
+    "FROST/FREEZE",
+    #Funnel Cloud C
+    "FUNNEL CLOUD",
+    #Freezing Fog Z
+    "FREEZING FOG",
+    #Hail C
+    "HAIL",
+    #Heat Z
+    "HEAT",
+    #Heavy Rain C
+    "HEAVY RAIN",
+    #Heavy Snow Z
+    "HEAVY SNOW",
+    #High Surf Z
+    "HIGH SURF",
+    #Hurricane (Typhoon) Z
+    "HURRICANE/TYPHOON",
+    #Ice Storm Z
+    "ICE STORM",
+    #Lake-Effect Snow Z
+    "LAKE-EFFECT SNOW",
+    #Lakeshore Flood Z
+    "LAKESHORE FLOOD",
+    #Lightning C
+    "LIGHTNING",
+    #Marine Hail M
+    "MARINE HAIL",
+    #Marine High Wind M
+    "MARINE HIGH WIND",
+    #Marine Strong Wind M
+    "MARINE STRONG WIND",
+    #Marine Thunderstorm Wind M
+    "MARINE THUNDERSTORM WIND",
+    #Rip Current Z
+    "RIP CURRENT",
+    #Seiche Z
+    "SEICHE",
+    #Sleet Z
+    "SLEET",
+    #Storm Surge/Tide Z
+    "STORM SURGE/TIDE",
+    #Strong Wind Z
+    "STRONG WIND",
+    #Tornado C
+    "TORNADO",
+    #Tropical Depression Z
+    "TROPICAL DEPRESSION",
+    #Tropical Storm Z
+    "TROPICAL STORM",
+    #Tsunami Z
+    "TSUNAMI",
+    #Volcanic Ash Z
+    "VOLCANIC ASH",
+    #Waterspout M
+    "WATERSPROUT",
+    #Wildfire Z
+    "WILDFIRE",
+    #Winter Weather Z
+    "WINTER WEATHER")
+
+```
+
+We unify the different denominations to event types 'EVTYPE' into the new column 'type' using the dictionary above:
+
+```{r apply-dictionary, cache=TRUE}
+# initialise column to flag events already unified
+damages$fixed <- FALSE
+
+for (i in 1:length(dic$key)) {
+    # find current EVTYPES in dictionary and find corresponding 'key'
+    fit_dictionary <- grepl(dic$terms[i], damages$EVTYPE)
+    #make sure we don't correct events already fixed
+    to_replace <- fit_dictionary & !damages$fixed
+    
+    damages$type[to_replace] <- toString(dic$key[i])
+    
+    # update fixed index
+    damages$fixed[to_replace] <- TRUE
+    }
+```
+
+```{r convert-to-millions-dolars, cache= FALSE}
+# apply multipliers to convert to millions of dollars
+multipliers <- data.frame(letter = c("B", "M", "K"), number = c(1e3, 1, 1e-3)) # faltan el H y los n??meros
+# initialise value for damages to property and crops in $
+damages$property <- 0
+damages$crop <- 0
+for ( i in 1:length(multipliers$letter)) {
+    prop_units_to_convert <- damages$PROPDMGEXP == multipliers$letter[i]
+    damages$property[prop_units_to_convert] <- 
+        damages$PROPDMG[prop_units_to_convert] * multipliers$number[i]
+    crop_units_to_convert <- damages$CROPDMGEXP == multipliers$letter[i]
+    damages$crop[crop_units_to_convert] <- 
+        damages$CROPDMG[crop_units_to_convert] * multipliers$number[i]
+    }
+
+```
+
+We aggregate damages to property, crops and humans to be able to compare the different event types.
+
+```{r generate-aggregated-results, cache=FALSE}
+
+class(damages$type)
+class(dic$key[1])
+conclusions <- damages %>%    
+    group_by(type) %>%
+    summarise(sum_property = sum(property), 
+              sum_crop = sum(crop), 
+              total_impact = sum(property, crop), 
+              sum_deaths = sum(FATALITIES), 
+              sum_blessed = sum(INJURIES)) %>%
+    arrange(sum_deaths)
+```
+```{r present-results, results="asis", cache=FALSE}
+table <- xtable(conclusions)
+print(table, type= "html")
+```
+
+## Results
+### Harmfulness
+```{r human-health-results}
+# Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+arrange(conclusions, desc(sum_deaths))
+c <- ggplot(data = conclusions, aes(y = sum_deaths, x = type)) + 
+    geom_bar(position="dodge",stat="identity") +  
+    coord_flip() +
+    xlab("Type of event") + ylab("Number of casualties") + ggtitle("Human consequences of events") +
+    theme(axis.text.x = element_text(colour="grey20",size=7,angle=90,hjust=.5,vjust=.5,face="plain"),
+          axis.text.y = element_text(colour="grey20",size=7,angle=0,hjust=1,vjust=0,face="plain"),  
+          axis.title.x = element_text(colour="grey20",size=12,angle=0,hjust=.5,vjust=0,face="plain"),
+          axis.title.y = element_text(colour="grey20",size=12,angle=90,hjust=.5,vjust=.5,face="plain"))
+print(c) 
+
+```
+
+Based on the analytics above 'Tornado', 'Excessive heat' and 'Flash Flood' are the most harmful events to population.
+X cause the highest number of injuried people and Y the most deaths.
+In order to avoid those, it is recommendable to support forecasting activities that help predict these kind of events and create the appropriate mitigation plans to reduce the exposition of people to such events, e.g. creation of emergency plans and proper communication protocols.
+
+Regarding injuries, 'Tornado', and 'Heat' repeat in the top 3, and 'Thunderstorm' joins in. I believe the same solution could be applicable in this case.
+
+### Economic consequences
+
+```{r economic-results}
+## Across the United States, which types of events have the greatest economic consequences?
+arrange(conclusions, desc(total_impact))
+a <- ggplot(data = conclusions, aes(y = total_impact, x = type)) + 
+    geom_bar(position="dodge",stat="identity") +  
+    coord_flip() +
+    xlab("Type of event") + ylab("Damage caused to property and crops (M$)") + 
+    ggtitle("Economic consequences of events") +
+    theme(axis.text.x = element_text(colour="grey20",size=7,angle=90,hjust=.5,vjust=.5,face="plain"),
+          axis.text.y = element_text(colour="grey20",size=7,angle=0,hjust=1,vjust=0,face="plain"),  
+          axis.title.x = element_text(colour="grey20",size=12,angle=0,hjust=.5,vjust=0,face="plain"),
+          axis.title.y = element_text(colour="grey20",size=12,angle=90,hjust=.5,vjust=.5,face="plain"))
+print(a) 
+```
+
+Based on the analytics above 'Flood', 'Hurricane/Typhoon' and 'Tornado' are the most harmfull to economy, in terms of property and crop damage. Further study on affected areas and size of the damage could help applying the appropriate mitigation plans, such as insurance or diversification.

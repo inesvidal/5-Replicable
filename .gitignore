@@ -4,6 +4,10 @@
 
 # Session Data files
 .RData
+*.RData
+*.rdx
+*.rdb
+*.mp4
 
 # Example code in package build process
 *-Ex.R
